@@ -31,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     int selectedOption = -1;
     int selectedOptionInUpperRow = -1;
     int selectedInList = 0;
+    int selectedIn3Row = -1;
 
     MgStruct mgStruct = new MgStruct();
     Elements elements = new Elements();
@@ -43,11 +44,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestPerms();
         contex = this;
         editorCanvas = new EditorCanvas(this);
         setContentView(editorCanvas);
         editorCanvas.init();
-        load();
+        reset();
     }
 
     class EditorCanvas extends View {
@@ -65,7 +67,7 @@ public class MainActivity extends AppCompatActivity {
         int mouseOnScreenX = 0, mouseOnScreenY = 0;
         int zoomBase = 1000, zoomOut = zoomBase;
         int btnW, btnH;
-        int xBtnOffset = 0;
+        int xUpperBtnsOffset = 0;
 
         void init() {
             w = getWidth();
@@ -93,9 +95,21 @@ public class MainActivity extends AppCompatActivity {
 
             g.drawColor(Color.BLACK);
 
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.parseColor("#aaaa00"));
+            paint.setTextSize(textSize);
+            paint.setTextAlign(Paint.Align.CENTER);
+            if (elements.wrongStartPointWarning | elements.wrongStartOfCurrPlacing) {
+                g.drawText("Warn: start point should be on (x,y) 0 0", w/2, h/2 + h / 6, paint);
+            }
+            paint.setStyle(Paint.Style.STROKE);
+
             drawCar(g);
 
             for (int i = 0; i < mgStruct.getBufSize(); i++) { // draw all placed elements
+                if (elements.isEditing & i == elements.currEditingIdInList) {
+                    continue;
+                }
                 short structID = mgStruct.readBuf(i)[0];
                 if (structID == 0) // id 0 is end of file
                     break;
@@ -131,14 +145,17 @@ public class MainActivity extends AppCompatActivity {
 
             paint.setColor(Color.WHITE);
             g.drawCircle(calcX(mouseX), calcY(mouseY), 4, paint); // draw cursor
+            paint.setStyle(Paint.Style.STROKE);
 
-            String hint = mouseX + " " + mouseY;
+            short x = (short) mouseX;
+            short y = (short) mouseY;
+            String hint = x + " " + y;
             if (elements.isBusy) { // preview when placing an element
-                if (elements.step > 1) {
-                    short id = elements.currentPlacing[0];
-                    int step = elements.step;
-                    elements.calcArgs(id, step, (short) mouseX, (short) mouseY);
-                    if (id == 3) {
+                short id = elements.currentPlacing[0];
+                int step = elements.step;
+                if ((step > 1 | mgStruct.clicks[id] < 2) | elements.isEditing) {
+                    elements.calcArgs(id, step, x, y);
+                    if ((id == 3 | id == 5) & step > 1) {
                         hint = String.valueOf(elements.currentPlacing[3]);
                     }
                     drawElement(g, paint, id, elements.currentPlacing);
@@ -148,7 +165,11 @@ public class MainActivity extends AppCompatActivity {
             paint.setTextSize(lesserTextSize);
             g.drawText(hint, mouseOnScreenX + 30, mouseOnScreenY + 30, paint);
             paint.setStyle(Paint.Style.STROKE);
-            drawGUI(g);
+            try {
+                drawGUI(g);
+            } catch (NullPointerException ex) {
+
+            }
         }
 
         int xWhenPressed = 0, yWhenPressed = 0;
@@ -255,15 +276,18 @@ public class MainActivity extends AppCompatActivity {
                             if (touchedRow == MAIN_ROW) {
                                 handleMainRowSelected();
                             } else if (touchedRow == UPPER_ROW) {
-                                handleListMenuSelected();
+                                handleEditorMenuSelected();
                             } else if (touchedRow == LIST_ROW) {
                                 if (selectedInList == prevSelected) {
                                     elements.edit(selectedInList);
                                 }
                                 prevSelected = selectedInList;
                             } else if (touchedRow == EXPANDED_MENU_ROW) {
-                                selectedOptionInUpperRow = (x - xBtnOffset) / btnW;
+                                selectedOptionInUpperRow = (x - xUpperBtnsOffset) / btnW;
                                 handleExpandedMenuSelected();
+                            } else if (touchedRow == MOVE_TO_ZERO_BUTTON) {
+                                selectedIn3Row = x / (btnW * 2);
+                                handle3RowSelected();
                             }
                             invalidate();
                             break;
@@ -421,11 +445,12 @@ public class MainActivity extends AppCompatActivity {
 
         float textSize;
         float lesserTextSize;
-        String[] mainBtns = {"Load", "Save", "Line", "Circle", "More", "List"};
-        String[] editorBtns = {"Edit", "Delete"};
+        String[] mainBtns = {"Name", "Load", "Save", "Line", "Circle", "More", "List"};
+        String[] editorBtns = {/*"Undo/ Redo", */"Move point-1", "Move point-2", "Edit", "Delete"};
         String[] expandedMenuBtns = {"Breakable line"/*, "Brekable circle"*/};
         boolean isMenuExpanded = false;
         boolean isListShown = false;
+        int listWidthInBtns = 2;
 
         void drawGUI(Canvas g) {
             Paint paint = new Paint();
@@ -446,76 +471,134 @@ public class MainActivity extends AppCompatActivity {
             for (int i = 1; i < mainBtns.length; i++) {
                 g.drawLine(i * btnW, h - btnH, i * btnW, h - 1, paint);
             }
+
+            // draw list interface when it's opened
             if (isListShown) {
+                int btnH = Math.min(this.btnH, h / (listData.length + 1));
+                // highlight selected placed element in list
                 paint.setColor(Color.parseColor("#303080"));
                 if (selectedInList > -1) {
-                    g.drawRect(xBtnOffset + 2 * btnW, h - btnH * (selectedInList + 2), xBtnOffset + 4 * btnW, h - 1 - btnH * (selectedInList + 1), paint);
+                    g.drawRect(w - + listWidthInBtns * btnW, h - this.btnH - btnH * (selectedInList + 1), w, h - 1 - this.btnH - btnH * (selectedInList), paint);
                 }
-                if (selectedOptionInUpperRow > -1) {
-                    if (selectedOptionInUpperRow == 1 & (selectedInList == 0 | mgStruct.buffer[selectedInList][0] == 1)) {
-                        paint.setColor(Color.DKGRAY);
+
+                // draw gray background for "delete" button if it's inactive
+                if (selectedInList > -1) {
+                    if (selectedOptionInUpperRow > -1) {
+                        if (selectedOptionInUpperRow == editorBtns.length - 1 & mgStruct.buffer[selectedInList][0] == 1) {
+                            paint.setColor(Color.DKGRAY);
+                        }
+                        if (selectedOptionInUpperRow == editorBtns.length - 3 & (mgStruct.clicks[mgStruct.buffer[selectedInList][0]] <= 1)) {
+                            paint.setColor(Color.DKGRAY);
+                        }
+                        g.drawRect(xUpperBtnsOffset + selectedOptionInUpperRow * btnW, h - this.btnH - btnH * 3 / 2, xUpperBtnsOffset + (selectedOptionInUpperRow + 1) * btnW, h - 1 - btnH * 3 / 2, paint);
                     }
-                    g.drawRect(xBtnOffset + selectedOptionInUpperRow * btnW, h - btnH * 5 / 2, xBtnOffset + (selectedOptionInUpperRow + 1) * btnW, h - 1 - btnH * 3 / 2, paint);
                 }
+
+                // draw upper and lower sides of editor buttons (edit/delete)
                 paint.setColor(Color.WHITE);
-                g.drawLine(xBtnOffset, h - btnH * 5 / 2, w - btnW * editorBtns.length, h - btnH * 5 / 2, paint);
-                g.drawLine(xBtnOffset, h - btnH * 3 / 2, w - btnW * editorBtns.length, h - btnH * 3 / 2, paint);
-                g.drawLine(xBtnOffset + btnW * editorBtns.length, h - btnH, xBtnOffset + btnW * editorBtns.length, h - btnH * (listData.length + 1), paint);
+                g.drawLine(xUpperBtnsOffset, h - this.btnH - btnH * 3 / 2 - 1, w - btnW * listWidthInBtns, h - this.btnH - btnH * 3 / 2 - 1, paint);
+                g.drawLine(xUpperBtnsOffset, h - this.btnH - btnH / 2, w - btnW * listWidthInBtns, h - this.btnH - btnH / 2, paint);
 
+                // draw left bound of the list
+                g.drawLine(xUpperBtnsOffset + btnW * editorBtns.length, h - this.btnH, xUpperBtnsOffset + btnW * editorBtns.length, h - this.btnH - btnH * (listData.length), paint);
+
+                // draw side bounds of editor buttons
                 for (int i = 0; i < editorBtns.length + 1; i++) {
-                    g.drawLine(xBtnOffset + i * btnW, h - btnH * 5 / 2, xBtnOffset + i * btnW, h - 1 - btnH * 3 / 2, paint);
-                }
-                for (int i = 0; i < listData.length; i++) {
-                    g.drawLine(w - btnW * 2, h - btnH * (i + 2), w, h - btnH * (i + 2), paint);
+                    int x = xUpperBtnsOffset + i * btnW;
+                    int y1 = h - this.btnH - btnH * 3 / 2;
+                    int y2 = h - this.btnH - 1 - btnH / 2;
+                    g.drawLine(x, y1, x, y2, paint);
                 }
 
+                // draw bounds of each element of the list
+                for (int i = 0; i < listData.length; i++) {
+                    g.drawLine(w - btnW * 2, h - this.btnH - btnH * (i + 1), w, h - this.btnH - btnH * (i + 1), paint);
+                }
+
+                // draw names of each list element
                 for (int i = 0; i < listData.length; i++) {
                     paint.getTextBounds(listData[i], 0, listData[i].length(), bounds);
-                    g.drawText(listData[i], w - btnW, h - btnH - btnH / 2 + bounds.height() / 2 - i * btnH, paint);
+                    g.drawText(listData[i], w - btnW, h - this.btnH - btnH / 2 + bounds.height() / 2 - i * btnH, paint);
                 }
+
+                // draw editor buttons' names
                 for (int i = 0; i < editorBtns.length; i++) {
                     try {
-                        if (i == 1 & (selectedInList == 0 | mgStruct.buffer[selectedInList][0] == 1)) {
-                            paint.setColor(Color.GRAY);
+                        paint.setColor(Color.WHITE);
+                        if (selectedInList > -1) {
+                            if (i == editorBtns.length - 1 & (mgStruct.buffer[selectedInList][0] == 1)) {
+                                paint.setColor(Color.GRAY);
+                            }
+                            if (i == editorBtns.length - 3 & (mgStruct.clicks[mgStruct.buffer[selectedInList][0]] <= 1)) {
+                                paint.setColor(Color.GRAY);
+                            }
                         }
                     } catch (NullPointerException ex) {
 
                     }
                     paint.getTextBounds(editorBtns[i], 0, editorBtns[i].length(), bounds);
 
-                    g.drawText(editorBtns[i], xBtnOffset + i * btnW + btnW / 2, h - btnH * 2 + bounds.height() / 2, paint);
+                    //g.drawText(editorBtns[i], xUpperBtnsOffset + i * btnW + btnW / 2, h - btnH * 2 + bounds.height() / 2, paint);
+
+                    paint.getTextBounds(editorBtns[i], 0, editorBtns[i].length(), bounds);
+                    if (bounds.width() < btnW - btnW / 8) {
+                        g.drawText(editorBtns[i], xUpperBtnsOffset + i * btnW + btnW / 2, h - this.btnH - btnH + bounds.height() / 2, paint);
+                    } else {
+                        String[] text = editorBtns[i].split(" ");
+                        float prevTextSize = paint.getTextSize();
+                        paint.setTextSize(prevTextSize / (text.length - 0.5f));
+                        for (int j = 0; j < text.length; j++) {
+                            paint.getTextBounds(text[j], 0, text[j].length(), bounds);
+                            int x = xUpperBtnsOffset + i * btnW + btnW / 2;
+                            int y = h - this.btnH - btnH * 3 / 2 + bounds.height()/2 + (btnH * j / text.length) + btnH / text.length / 2;
+                            g.drawText(text[j], x, y, paint);
+                        }
+                        paint.setTextSize(prevTextSize);
+                    }
                 }
 
             }
-            ////////
+            //////// draw expanded menu (on "more" button) if opened
             if (isMenuExpanded) {
                 paint.setTextSize(lesserTextSize);
-                Log.i("SIIIIIIIIIIIIIIIIZE!!!!", lesserTextSize + " " + textSize);
                 if (selectedOptionInUpperRow > -1) {
                     paint.setColor(Color.parseColor("#303080"));
-                    g.drawRect(xBtnOffset + selectedOptionInUpperRow * btnW, h - btnH * 2, xBtnOffset + (selectedOptionInUpperRow + 1) * btnW, h - 1 - btnH, paint);
+                    g.drawRect(xUpperBtnsOffset + selectedOptionInUpperRow * btnW, h - btnH * 2, xUpperBtnsOffset + (selectedOptionInUpperRow + 1) * btnW, h - 1 - btnH, paint);
                 }
                 paint.setColor(Color.WHITE);
-                g.drawLine(xBtnOffset, h - btnH * 2, xBtnOffset + btnW * expandedMenuBtns.length, h - btnH * 2, paint);
+                g.drawLine(xUpperBtnsOffset, h - btnH * 2, xUpperBtnsOffset + btnW * expandedMenuBtns.length, h - btnH * 2, paint);
                 for (int i = 0; i < expandedMenuBtns.length + 1; i++) {
-                    g.drawLine(xBtnOffset + i * btnW, h - btnH * 2, xBtnOffset + i * btnW, h - 1 - btnH, paint);
+                    g.drawLine(xUpperBtnsOffset + i * btnW, h - btnH * 2, xUpperBtnsOffset + i * btnW, h - 1 - btnH, paint);
                 }
                 for (int i = 0; i < expandedMenuBtns.length; i++) {
                     paint.getTextBounds(expandedMenuBtns[i], 0, expandedMenuBtns[i].length(), bounds);
                     if (bounds.width() < btnW - btnW / 8) {
-                        g.drawText(expandedMenuBtns[i], xBtnOffset + i * btnW + btnW / 2, h - btnH * 3 / 2 + bounds.height() / 2, paint);
+                        g.drawText(expandedMenuBtns[i], xUpperBtnsOffset + i * btnW + btnW / 2, h - btnH * 3 / 2 + bounds.height() / 2, paint);
                         //Log.i("<", "<");
                     } else {
                         String[] text = expandedMenuBtns[expandedMenuBtns.length - 1 - i].split(" ");
                         //Log.i("l", String.valueOf(text.length));
                         for (int j = 0; j < text.length; j++) {
                             paint.getTextBounds(text[j], 0, text[j].length(), bounds);
-                            int x = xBtnOffset + i * btnW + btnW / 2;
+                            int x = xUpperBtnsOffset + i * btnW + btnW / 2;
                             int y = h - btnH *2 + bounds.height()/2 + (btnH * j / text.length) + btnH / text.length / 2;
                             g.drawText(text[j], x, y, paint);
                         }
                     }
                 }
+            }
+            if (elements.wrongStartPointWarning) {
+                paint.setColor(Color.parseColor("#303080"));
+                if (selectedIn3Row > -1) {
+                    g.drawRect(selectedIn3Row * btnW * 2, h - btnH * 4, (selectedIn3Row + 1) * btnW * 2, h - btnH * 3, paint);
+                }
+                paint.setColor(Color.WHITE);
+                g.drawLine(0, h - btnH * 4, btnW * 2, h - btnH * 4, paint);
+                g.drawLine(btnW * 2, h - btnH * 4, btnW * 2, h - btnH * 3, paint);
+                g.drawLine(0, h - btnH * 3, btnW * 2, h - btnH * 3, paint);
+                String str = "Move all to 0 0";
+                paint.getTextBounds(str, 0, str.length(), bounds);
+                g.drawText(str, btnW, h - btnH * 7 / 2 + bounds.height() / 2, paint);
             }
         }
 
@@ -523,17 +606,19 @@ public class MainActivity extends AppCompatActivity {
         int UPPER_ROW = 1;
         int LIST_ROW = 2;
         int EXPANDED_MENU_ROW = 3;
+        int MOVE_TO_ZERO_BUTTON = 4;
         int prevSelected = selectedInList;
         int input(int x, int y) { // sorting touch events
             if (y >= h - btnH) {
                 selectedOption = x * mainBtns.length / w;
                 return MAIN_ROW;
             } else if (isListShown) {
-                if (y >= h - btnH * 5 / 2 & y < h - btnH * 3 / 2 & x < xBtnOffset + btnW * editorBtns.length & (x - xBtnOffset) >= 0) {
-                    selectedOptionInUpperRow = (x - xBtnOffset) / btnW;
+                int btnH = Math.min(this.btnH, h / (listData.length + 1));
+                if (y >= h - this.btnH - btnH * 3 / 2 & y < h - this.btnH - btnH / 2 & x < xUpperBtnsOffset + btnW * editorBtns.length & (x - xUpperBtnsOffset) >= 0) {
+                    selectedOptionInUpperRow = (x - xUpperBtnsOffset) / btnW;
                     return UPPER_ROW;
-                } else if (y < h - btnH & x > xBtnOffset + btnW * editorBtns.length) {
-                    selectedInList = (h - y - btnH) / btnH;
+                } else if (y < h - this.btnH & x > xUpperBtnsOffset + btnW * editorBtns.length) {
+                    selectedInList = (h - y - this.btnH) / btnH;
                     if (selectedInList >= listData.length) {
                         selectedInList = listData.length - 1;
                         return -1;
@@ -541,50 +626,73 @@ public class MainActivity extends AppCompatActivity {
                     return LIST_ROW;
                 }
             } else if (isMenuExpanded) {
-                if (y >= h - btnH * 2 & y < h - btnH & x < xBtnOffset + btnW * expandedMenuBtns.length & (x - xBtnOffset) >= 0) {
-                    selectedOptionInUpperRow = (x - xBtnOffset) / btnW;
+                if (y >= h - btnH * 2 & y < h - btnH & x < xUpperBtnsOffset + btnW * expandedMenuBtns.length & (x - xUpperBtnsOffset) >= 0) {
+                    selectedOptionInUpperRow = (x - xUpperBtnsOffset) / btnW;
                     return EXPANDED_MENU_ROW;
+                }
+            }
+            if (elements.wrongStartPointWarning) {
+                if (y >= h - btnH * 4 & y <= h - btnH * 3 & x <= btnW * 2) {
+                    selectedIn3Row = x / (btnW * 2);
+                    return MOVE_TO_ZERO_BUTTON;
                 }
             }
             return -1;
         }
 
-        int inToolbarActionBtns = 2;
-        int inToolbarElementBtnsN = 2;
+        int inToolbarActionBtnsN = 3;
+        int inToolbarPlaceBtnsN = 2;
         void handleMainRowSelected() {
-            if (selectedOption >= inToolbarActionBtns & selectedOption < inToolbarActionBtns + inToolbarElementBtnsN) {
-                elements.place(2 + selectedOption - inToolbarActionBtns, mouseX, mouseY);
+            elements.cancel();
+            if (selectedOption == mainBtns.length - 2) {
+                showHideExpandedMenu();
+            } else if (selectedOption == mainBtns.length - 1) {
+                showHideList();
             } else {
-                elements.cancel();
+                isMenuExpanded = false;
+                isListShown = false;
                 if (selectedOption == 0) {
+                    changeName();
+                    requestPerms();
+                } else if (selectedOption == 1) {
                     load();
                     requestPerms();
                     selectedOption = -1;
                     init();
-                } else if (selectedOption == 1) {
+                } else if (selectedOption == 2) {
                     mgStruct.saveToFile();
                     requestPerms();
                     selectedOption = -1;
-                } else if (selectedOption == mainBtns.length - 2) {
-                    showHideExpandedMenu();
-                } else if (selectedOption == mainBtns.length - 1) {
-                    showHideList();
+                } else if (selectedOption >= inToolbarActionBtnsN & selectedOption < inToolbarActionBtnsN + inToolbarPlaceBtnsN) {
+                    elements.place(2 + selectedOption - inToolbarActionBtnsN, mouseX, mouseY);
                 }
             }
         }
 
-        void handleListMenuSelected() {
+        void handleEditorMenuSelected() {
             elements.cancel();
-            if (selectedOptionInUpperRow == 0) {
+            if (selectedOptionInUpperRow == editorBtns.length - 5) {
+                mgStruct.undo();
+                reloadList();
+                selectedOptionInUpperRow = -1;
+                Log.d("UNDO", "UNDO");
+            } else if (selectedOptionInUpperRow == editorBtns.length - 4) {
+                elements.edit(selectedInList, 1);
+            } else if (selectedOptionInUpperRow == editorBtns.length - 3) {
+                elements.edit(selectedInList, 2);
+            } else if (selectedOptionInUpperRow == editorBtns.length - 2) {
                 elements.edit(selectedInList);
-            } else if (selectedOptionInUpperRow == 1) {
+            } else if (selectedOptionInUpperRow == editorBtns.length - 1) {
+                selectedOptionInUpperRow = -1;
                 elements.delete(selectedInList);
             }
-            selectedOptionInUpperRow = -1;
         }
         void handleExpandedMenuSelected() {
             elements.cancel();
             elements.place(4 + selectedOptionInUpperRow, mouseX, mouseY);
+        }
+        void handle3RowSelected() {
+            elements.moveAllToStartPoint();
         }
 
         void showHideList() {
@@ -593,7 +701,7 @@ public class MainActivity extends AppCompatActivity {
             if (!isListShown) {
                 selectedOption = -1;
             } else {
-                xBtnOffset = w - btnW * (editorBtns.length + 2);
+                xUpperBtnsOffset = w - btnW * (editorBtns.length + 2);
                 reloadList();
             }
         }
@@ -604,7 +712,7 @@ public class MainActivity extends AppCompatActivity {
             if (!isMenuExpanded) {
                 selectedOption = -1;
             } else {
-                xBtnOffset = w - btnW * Math.max(2, expandedMenuBtns.length);
+                xUpperBtnsOffset = w - btnW * Math.max(2, expandedMenuBtns.length);
             }
         }
         /**
@@ -669,9 +777,38 @@ public class MainActivity extends AppCompatActivity {
 
         short[] currentPlacing;
         private boolean isBusy = false;
+        private boolean isEditing = false;
+        private int currEditingIdInList = -1;
         private int step = 0;
         short x0 = 0;
         short y0 = 0;
+
+        public boolean place(int id) {
+            if (id == 0) {
+                currPlacingID = (short) id;
+                isBusy = false;
+                isEditing = false;
+                step = 0;
+            } else if (!isBusy) {
+                mgStruct.updateHistory();
+                isBusy = true;
+                currPlacingID = (short) id;
+                step = 1;
+                currentPlacing = new short[mgStruct.args[currPlacingID] + 1];
+                currentPlacing[0] = currPlacingID;
+                return true;
+            } else {
+                int currID = currPlacingID;
+                cancel();
+                if (id != currID) {
+                    place(id);
+                } else {
+                    selectedOption = -1;
+                    selectedOptionInUpperRow = -1;
+                }
+            }
+            return false;
+        }
 
         public boolean place(int id, int x, int y) {
             if (id == 0) {
@@ -679,6 +816,7 @@ public class MainActivity extends AppCompatActivity {
                 isBusy = false;
                 step = 0;
             } else if (!isBusy) {
+                mgStruct.updateHistory();
                 isBusy = true;
                 currPlacingID = (short) id;
                 step = 1;
@@ -700,6 +838,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         public boolean clicked(int x, int y) {
+            if (suppressFirstClick) {
+                suppressFirstClick = false;
+                return false;
+            }
             short xShort = (short) x;
             short yShort = (short) y;
             if (isBusy) {
@@ -710,29 +852,45 @@ public class MainActivity extends AppCompatActivity {
                     for (int i : currentPlacing) {
                         System.out.print(i + " ");
                     }
-                    mgStruct.saveToBuffer(currentPlacing);
-                    selectedInList = mgStruct.length - 1;
+                    if (!isEditing) {
+                        mgStruct.saveToBuffer(currentPlacing);
+                        selectedInList = mgStruct.length - 1;
+                    } else {
+                        if (currEditingIdInList > -1) {
+                            mgStruct.buffer[currEditingIdInList] = currentPlacing;
+                        }
+                    }
                     reloadList();
-                    calcEndPoint();
+                    if (currPlacingID != 1)
+                        calcEndPoint();
                     currPlacingID = 0;
+                    isEditing = false;
+                    wrongStartOfCurrPlacing = false;
+                    checkStartPoint();
                     return true;
                 }
                 calcArgs(currPlacingID, step, xShort, yShort);
+                if (isEditing) {
+                    step = 3000;
+                    clicked(x, y);
+                }
                 step++;
             }
             return false;
         }
 
+        boolean wrongStartPointWarning = false;
+        boolean wrongStartOfCurrPlacing = false;
         void calcArgs(short id, int step, short x, short y) {
             /*if (mouseOnCanvX < 0 | mouseOnCanvX > w | mouseOnCanvY < 0 | mouseOnCanvY > h) {
                 cancel();
                 return;
             }*/
-            if (currPlacingID == 1) {
+            if (id == 1) {
                 currentPlacing[1] = x;
                 currentPlacing[2] = y;
             } else
-            if (currPlacingID == 2) {
+            if (id == 2) {
                 if (step == 1) {
                     currentPlacing[1] = x;
                     currentPlacing[2] = y;
@@ -741,7 +899,7 @@ public class MainActivity extends AppCompatActivity {
                     currentPlacing[4] = y;
                 }
             } else
-            if (currPlacingID == 3) {
+            if (id == 3) {
                 if (step == 1) {
                     currentPlacing[1] = x;
                     currentPlacing[2] = y;
@@ -760,7 +918,7 @@ public class MainActivity extends AppCompatActivity {
                     currentPlacing[7] = 100;
                 }
             } else
-            if (currPlacingID == 4) {
+            if (id == 4) {
                 if (step == 1) {
                     currentPlacing[1] = x;
                     currentPlacing[2] = y;
@@ -783,7 +941,7 @@ public class MainActivity extends AppCompatActivity {
                     if (l <= 0) {
                         l = 1;
                     }
-                    int optimalPlatfL = 100;
+                    int optimalPlatfL = 130;
                     int platfL = optimalPlatfL;
                     if (platfL > l) {
                         platfL = l;
@@ -804,7 +962,7 @@ public class MainActivity extends AppCompatActivity {
                     currentPlacing[9] = (short) Math.toDegrees(Math.atan2(dy, dx));
                 }
             } else
-            if (currPlacingID == 5) {
+            if (id == 5) {
                 if (step == 1) {
                     currentPlacing[1] = x;
                     currentPlacing[2] = y;
@@ -824,6 +982,24 @@ public class MainActivity extends AppCompatActivity {
                     currentPlacing[8] = 20;
                 }
             }
+
+            short currCheckingX = currentPlacing[1];
+            short currCheckingY = currentPlacing[2];
+            if (id == 2 | id == 4) {
+                short x2nd = currentPlacing[3];
+                short y2nd = currentPlacing[4];
+                if (compareAsStarts(currCheckingX, currCheckingY, x2nd, y2nd)) {
+                    currCheckingX = x2nd;
+                    currCheckingY = y2nd;
+                }
+            } else if (id == 3 | id == 5) {
+                int r = currentPlacing[3];
+                currCheckingX -= r;
+            }
+            wrongStartOfCurrPlacing = (currCheckingX != 0 | currCheckingY != 0) & mgStruct.length < 2;
+            if (currCheckingX < 0) {
+                wrongStartOfCurrPlacing = true;
+            }
         }
 
         public void calcEndPoint() {
@@ -832,13 +1008,17 @@ public class MainActivity extends AppCompatActivity {
             for (int i = 1; i < mgStruct.length; i++) {
                 short currCheckingX = mgStruct.buffer[i][1];
                 short currCheckingY = mgStruct.buffer[i][2];
-                if (mgStruct.buffer[i][0] == 2) {
+                int id = mgStruct.buffer[i][0];
+                if (id == 2 | id == 4) {
                     short x2nd = mgStruct.buffer[i][3];
                     short y2nd = mgStruct.buffer[i][4];
                     if (compareAsEnds(currCheckingX, currCheckingY, x2nd, y2nd)) {
                         currCheckingX = x2nd;
                         currCheckingY = y2nd;
                     }
+                } else if (id == 3 | id == 5) {
+                    int r = mgStruct.buffer[i][3];
+                    currCheckingX += r;
                 }
                 if (compareAsEnds(x, y, currCheckingX, currCheckingY)) {
                     x = currCheckingX;
@@ -867,6 +1047,8 @@ public class MainActivity extends AppCompatActivity {
             if (i == 0 | mgStruct.buffer[i][0] == 1) {
                 return;
             }
+            mgStruct.updateHistory();
+
             mgStruct.length--;
             for (int j = i; j < mgStruct.length; j++) {
                 mgStruct.buffer[j] = mgStruct.buffer[j + 1];
@@ -874,6 +1056,44 @@ public class MainActivity extends AppCompatActivity {
             selectedInList = mgStruct.length - 1;
             calcEndPoint();
             reloadList();
+        }
+        boolean suppressFirstClick = false;
+        void edit(int idInList, int startWithStep) {
+            mgStruct.updateHistory();
+            currEditingIdInList = idInList;
+            if (isBusy) {
+                cancel();
+            }
+            int id = mgStruct.buffer[idInList][0];
+            if (mgStruct.clicks[id] < startWithStep) {
+                selectedOptionInUpperRow = -1;
+                return;
+            }
+            isEditing = true;
+
+            if (id == 0) {
+                currPlacingID = (short) id;
+                isBusy = false;
+                step = 0;
+                isEditing = false;
+            } else if (!isBusy) {
+                isBusy = true;
+                currentPlacing = mgStruct.buffer[idInList];
+                currPlacingID = (short) id;
+                step = startWithStep;
+                //return true;
+            } else {
+                int currID = currPlacingID;
+                cancel();
+                if (id != currID) {
+                    edit(idInList, startWithStep);
+                } else {
+                    selectedOption = -1;
+                    selectedOptionInUpperRow = -1;
+                }
+            }
+            //suppressFirstClick = true;
+            //return false;
         }
         void edit(int i) {
             Intent intent = new Intent(MainActivity.this, DialogActivity.class);
@@ -894,10 +1114,70 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("DATA", str);
             startActivityForResult(intent, 1);
         }
+
+        void moveAllToStartPoint() {
+            mgStruct.updateHistory();
+            short[] dxdy = checkStartPoint();
+            int dx = -dxdy[0];
+            int dy = -dxdy[1];
+
+            for (int i = 0; i < mgStruct.length; i++) {
+                int id = mgStruct.buffer[i][0];
+                mgStruct.buffer[i][1] += dx;
+                mgStruct.buffer[i][2] += dy;
+                if (id == 2 | id == 4) {
+                    mgStruct.buffer[i][3] += dx;
+                    mgStruct.buffer[i][4] += dy;
+                }
+            }
+            selectedIn3Row = -1;
+            wrongStartPointWarning = false;
+        }
+
+        public short[] checkStartPoint() {
+            short x = 0;
+            short y = 0;
+            boolean first = true;
+            for (int i = 1; i < mgStruct.length; i++) {
+                short currCheckingX = mgStruct.buffer[i][1];
+                short currCheckingY = mgStruct.buffer[i][2];
+                if (first) {
+                    x = currCheckingX;
+                    y = currCheckingY;
+                    first = false;
+                }
+                int id = mgStruct.buffer[i][0];
+                if (id == 2 | id == 4) {
+                    short x2nd = mgStruct.buffer[i][3];
+                    short y2nd = mgStruct.buffer[i][4];
+                    if (compareAsStarts(currCheckingX, currCheckingY, x2nd, y2nd)) {
+                        currCheckingX = x2nd;
+                        currCheckingY = y2nd;
+                    }
+                } else if (id == 3 | id == 5) {
+                    int r = mgStruct.buffer[i][3];
+                    currCheckingX -= r;
+                }
+                if (compareAsStarts(x, y, currCheckingX, currCheckingY)) {
+                    x = currCheckingX;
+                    y = currCheckingY;
+                }
+            }
+            Log.i(String.valueOf(x), String.valueOf(y));
+            wrongStartPointWarning = (x != 0) | (y != 0);
+            return new short[]{x, y};
+        }
+        private boolean compareAsStarts(short x, short y, short currCheckingX, short currCheckingY) {
+            if (currCheckingX <= x) {
+                if (currCheckingX < x | (currCheckingY < y)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
-    void load() {
-        mgStruct.loadFile();
+    void reset() {
         selectedInList = reloadList() - 1;
         editorCanvas.invalidate();
         editorCanvas.prevSelected = selectedInList;
@@ -905,6 +1185,26 @@ public class MainActivity extends AppCompatActivity {
         selectedOptionInUpperRow = -1;
         editorCanvas.isListShown = false;
         editorCanvas.isMenuExpanded = false;
+        elements.wrongStartPointWarning = false;
+        elements.wrongStartOfCurrPlacing = false;
+        elements.place(1, 0, 0);
+    }
+
+    void changeName() {
+        Intent intent = new Intent(MainActivity.this, DialogActivity.class);
+        intent.putExtra("DIALOG_TYPE", 2);
+        intent.putExtra("TITLE", "Change name");
+        intent.putExtra("SUBTITLE", mgStruct.path);
+        intent.putExtra("name", mgStruct.name);
+        startActivityForResult(intent, 2);
+    }
+
+    void load() {
+        reset();
+        requestPerms();
+        mgStruct.loadFile();
+        selectedInList = reloadList() - 1;
+        mgStruct.updateHistory();
     }
 
     String[] listData;
@@ -912,6 +1212,9 @@ public class MainActivity extends AppCompatActivity {
         listData = new String[mgStruct.getBufSize()];
         for (int i = 0; i < mgStruct.getBufSize(); i++) {
             listData[i] = getShapeName(mgStruct.readBuf(i)[0]);
+        }
+        if (selectedInList >= listData.length) {
+            selectedInList = listData.length - 1;
         }
         return listData.length;
     }
@@ -952,37 +1255,51 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-
+        if (requestCode == 1) {
+            selectedOptionInUpperRow = -1;
+        } else if (requestCode == 2) {
+            selectedOption = -1;
+        }
+        editorCanvas.invalidate();
         if (resultCode == Activity.RESULT_CANCELED) {
             return;
+        } else {
+            mgStruct.updateHistory();
         }
-        String[] strippedStr = data.getStringExtra("RESULT").split(", ");
-        short elID = data.getShortExtra("EL_ID", (short) -1);
-        int idInList = data.getIntExtra("ID_IN_LIST", -1);
-        short[] shape = mgStruct.readBuf(idInList);
+        if (requestCode == 1) {
+            String[] strippedStr = data.getStringExtra("RESULT").split(", ");
+            short elID = data.getShortExtra("EL_ID", (short) -1);
+            int idInList = data.getIntExtra("ID_IN_LIST", -1);
+            short[] shape = mgStruct.readBuf(idInList);
 
-        try {
-            int it = 1;
-            if (shape[0] != elID) {
-                Log.e("Error", "Wrong element ID");
-                return;
-            }
-            for (String s : strippedStr) {
-                try {
-                    int v = Integer.parseInt(s);
-                    shape[it] = (short) v;
-                    System.out.println("v:" + v);
-                    it++;
-                } catch (NumberFormatException ex) {
-                    Log.e("Error", "Wrong number format");
+            try {
+                int it = 1;
+                if (shape[0] != elID) {
+                    Log.e("Error", "Wrong element ID");
+                    editorCanvas.invalidate();
+                    return;
                 }
+                for (String s : strippedStr) {
+                    try {
+                        int v = Integer.parseInt(s);
+                        shape[it] = (short) v;
+                        System.out.println("v:" + v);
+                        it++;
+                    } catch (NumberFormatException ex) {
+                        Log.e("Error", "Wrong number format");
+                    }
+                }
+                mgStruct.buffer[idInList] = shape;
+                if (elID != 1) {
+                    elements.calcEndPoint();
+                }
+            } catch (ArrayIndexOutOfBoundsException ex) {
+                Log.e("Error", "too many arguments");
             }
-            mgStruct.buffer[idInList] = shape;
-            if (elID != 1) {
-                elements.calcEndPoint();
-            }
-        } catch (ArrayIndexOutOfBoundsException ex) {
-            Log.e("Error", "too many arguments");
+        } else {
+            mgStruct.name = data.getStringExtra("name");
         }
+        elements.checkStartPoint();
+        editorCanvas.invalidate();
     }
 }
