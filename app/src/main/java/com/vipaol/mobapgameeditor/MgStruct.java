@@ -29,25 +29,23 @@ public class MgStruct {
     String name = "test" + ".mgstruct";
     String parentPath = Environment.getExternalStorageDirectory().getPath() + "/MGStructs/";
     String path = parentPath + name;
-    short[][] buffer = new short[256][];;
+    short[][] buffer = new short[256][];
     int bufSizeInShort = 0;
     boolean changed = true;
     int length = 0;
+    short[][] history = new short[buffer.length][];
+    int oldLength = length;
 
     public boolean loadFile() {
-        Log.d("load", "");
+        path = parentPath + name;
         length = 0;
         try {
             File f = new File(path);
-            Log.d("path", f.getPath());
-            Log.d("try", "");
             if (f.exists()) {
-                Log.d("exists", "");
                 InputStream is = new FileInputStream(f);
                 DataInputStream dis = new DataInputStream(is);
 
                 fileVersion = dis.readShort();
-                Log.d("file version", String.valueOf(fileVersion));
                 boolean cancelled = false;
 
                 if (fileVersion != supportedFileVer) {
@@ -64,7 +62,7 @@ public class MgStruct {
                         length = dis.readShort();
                     }
 
-                    buffer = new short[length * 16][];
+                    buffer = new short[Math.max(length * 16, 256)][];
                     length = 0;
 
                     while (true) {
@@ -105,6 +103,7 @@ public class MgStruct {
     }
 
     public boolean saveToFile() {
+        path = parentPath + name;
         try {
             File f = new File(parentPath);
             if (!f.exists()) {
@@ -150,6 +149,30 @@ public class MgStruct {
         bufSizeInShort += data.length;
         changed = true;
     }
+    void updateHistory() {
+        oldLength = length;
+        history = buffer.clone();
+        Log.d("HISTORY", "UPDATED");
+    }
+    void undo() {
+        int tmp = length;
+        short[][] tmpArr = buffer.clone();
+        buffer = history.clone();
+        length = oldLength;
+        history = tmpArr.clone();
+        oldLength = tmp;
+        Log.i("Length =", String.valueOf(length));
+    }
+    void redo() {
+        //TODO
+    }
+    boolean isUndoAvailable() {
+        return true;
+    }
+    boolean isRedoAvailable() {
+        return false; //TODO
+    }
+
     short[] readBuf(int i) {
         return buffer[i];
     }

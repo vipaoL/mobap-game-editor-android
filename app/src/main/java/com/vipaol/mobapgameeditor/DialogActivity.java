@@ -34,6 +34,8 @@ public class DialogActivity extends AppCompatActivity {
             editText.setText(getIntent().getStringExtra("DATA"));
             id = getIntent().getIntExtra("ID", -1);
             structID = getIntent().getShortExtra("ELEMENT_ID", (short) -1);
+        } else {
+            editText.setText(getIntent().getStringExtra("name"));
         }
     }/*
 
@@ -72,6 +74,8 @@ public class DialogActivity extends AppCompatActivity {
             /*Log.i("result", editText.getText().toString());*/
             returnIntent.putExtra("ID_IN_LIST", id);
             returnIntent.putExtra("EL_ID", structID);
+        } else {
+            returnIntent.putExtra("name", editText.getText().toString());
         }
         setResult(Activity.RESULT_OK, returnIntent);
         finish();
