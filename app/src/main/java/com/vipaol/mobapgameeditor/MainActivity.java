@@ -588,7 +588,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             if (elements.wrongStartPointWarning) {
-                paint.setColor(Color.parseColor("#303080"));
+                paint.setColor(Color.parseColor("#308030"));
                 if (selectedIn3Row > -1) {
                     g.drawRect(selectedIn3Row * btnW * 2, h - btnH * 4, (selectedIn3Row + 1) * btnW * 2, h - btnH * 3, paint);
                 }
@@ -1216,6 +1216,7 @@ public class MainActivity extends AppCompatActivity {
         if (selectedInList >= listData.length) {
             selectedInList = listData.length - 1;
         }
+        elements.checkStartPoint();
         return listData.length;
     }
 
