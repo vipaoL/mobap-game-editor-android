@@ -348,35 +348,36 @@ public class MainActivity extends AppCompatActivity {
                 int platfL = data[6];
                 int spacing = data[7];
                 Paint p = new Paint();
-                p.setColor(paint.getColor());
-                p.setStyle(Paint.Style.STROKE);
-                p.setStrokeWidth(ths);
+
                 int dx = x2 - x1;
                 int dy = y2 - y1;
 
-                int l;
-                if (dy == 0) {
-                    l = dx;
-                } else if (dx == 0) {
-                    l = dy;
-                } else {
-                    l = calcDistance(x1, y1, x2, y2);
+                int l = data[8];
+
+                if (l <= 0 | platfL <= 0 | spacing < 0 | data[5] <= 0) {
+                    p.setColor(Color.RED);
+                    g.drawLine(calcX(x1), calcY(y1), calcX(x2), calcY(y2), p);
+                    return;
                 }
 
-                if (l <= 0) {
-                    l = 1;
-                }
+                p.setColor(paint.getColor());
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(ths);
 
-                if (platfL <= 0) {
-                    platfL = 50;
-                }
+//                if (platfL <= 0) {
+//                    platfL = 50;
+//                }
+
+                int n = (l + spacing) / (platfL+spacing);
 
                 int spX = spacing * dx / l;
                 int spY = spacing * dy / l;
 
-                int n = l / (platfL + spacing);
+                int platfDx = (dx+spX) / n;
+                int platfDy = (dy+spY) / n;
+
                 for (int i = 0; i < n; i++) {
-                    g.drawLine(calcX(x1 + i * dx / n), calcY(y1 + i * dy / n), calcX(x1 + (i + 1) * (dx / n) - spX), calcY(y1 + (i + 1) * (dy / n) - spY), p);
+                    g.drawLine(calcX(x1 + i * platfDx), calcY(y1 + i * platfDy), calcX(x1 + (i + 1) * platfDx - spX), calcY(y1 + (i + 1) * platfDy - spY), p);
                 }
             } else if (id == 5) { // breakable arc
                 int x = data[1];
@@ -937,28 +938,30 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         l = calcDistance(dx, dy);
                     }
-                    l += spacing;
                     if (l <= 0) {
                         l = 1;
                     }
-                    int optimalPlatfL = 130;
+                    int optimalPlatfL = 260;
                     int platfL = optimalPlatfL;
                     if (platfL > l) {
                         platfL = l;
+                    } else {
+                        int platfL1 = platfL;
+                        while ((l + spacing) % (platfL + spacing) != 0 & platfL < l & (l + spacing) % (platfL1 + spacing) != 0) {
+                            platfL++;
+                            if (platfL1 > 5)
+                                platfL1--;
+                        }
+                        if ((l + spacing) % (platfL + spacing) == 0) {
+                            platfL1 = platfL;
+                        }
+                        platfL = platfL1;
                     }
-                    int platfL1 = platfL;
-                    while (l%platfL != 0 & platfL < l & l%platfL1 != 0) {
-                        platfL++;
-                        platfL1--;
-                    }
-                    if (l%platfL == 0) {
-                        platfL1 = platfL;
-                    }
-                    platfL = platfL1;
-                    platfL -= spacing;
+                    if (platfL <= 0)
+                        platfL = l;
                     currentPlacing[6] = (short) platfL;
                     currentPlacing[7] = (short) spacing;
-                    currentPlacing[8] = (short) (l - spacing);
+                    currentPlacing[8] = (short) l;
                     currentPlacing[9] = (short) Math.toDegrees(Math.atan2(dy, dx));
                 }
             } else
