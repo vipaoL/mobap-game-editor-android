@@ -18,11 +18,17 @@ import java.io.OutputStream;
  * @author vipaol
  */
 public class MgStruct {
-    int[] clicks = {0, /*1*/1, /*2*/2, /*3*/2, /*4*/2, /*5*/2};
-    int[] args = {0, /*1*/2, /*2*/4, /*3*/7, /*4*/9, /*5*/10};
-    String[] shapeNames = {"terminate", /*1*/"End point", /*2*/"Line", /*3*/"Circle", /*4*/"Breakable line", /*5*/"Breakable circle"};
-    String[] argsDescriptions = {"0", /*1*/"x, y", /*2*/"x1, y1, x2, y2", /*3*/"x, y, radius, arc-angle, arc-offset, x-coefficient, y-coefficient",
-            /*4*/"x1, y1, x2, y2, thickness, platform length, spacing, length, angle", /*5*/"x, y, radius, arc-angle, arc-offset, x-coefficient, y-coefficient, thickness, platform length, spacing"};
+    int[] clicks = {0, /*1*/1, /*2*/2, /*3*/2, /*4*/2, /*5*/2, /*6*/4, /*7*/3};
+    int[] args = {0, /*1*/2, /*2*/4, /*3*/7, /*4*/9, /*5*/10, /*6*/5, /*7*/8};
+    String[] shapeNames = {"EOF", /*1*/"End point", /*2*/"Line", /*3*/"Circle", /*4*/"Breakable line", /*5*/"Breakable circle", /*6*/"Sinus", /*7*/"Speed multiplier"};
+    String[] argsDescriptions = {"0",
+            /*1*/"x, y",
+            /*2*/"x1, y1, x2, y2",
+            /*3*/"x, y, radius, arc-angle, arc-offset, x-coefficient, y-coefficient",
+            /*4*/"x1, y1, x2, y2, thickness, platform length, spacing, length, angle",
+            /*5*/"x, y, radius, arc-angle, arc-offset, x-coefficient, y-coefficient, thickness, platform length, spacing",
+            /*6*/"x1, y1, l, amplitude, periodOffset, period",
+            /*7*/"x, y, l, h, angle, direction offset, speed multiplier, duration"};
 
     short supportedFileVer = 1;
     short fileVersion = supportedFileVer;

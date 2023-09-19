@@ -155,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
                 int step = elements.step;
                 if ((step > 1 | mgStruct.clicks[id] < 2) | elements.isEditing) {
                     elements.calcArgs(id, step, x, y);
-                    if ((id == 3 | id == 5) & step > 1) {
+                    if ((id == 3 | id == 5 | id == 7) & step > 1) {
                         hint = String.valueOf(elements.currentPlacing[3]);
                     }
                     drawElement(g, paint, id, elements.currentPlacing);
@@ -398,6 +398,25 @@ public class MainActivity extends AppCompatActivity {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     g.drawArc(calcX(x - r * kx / 100), calcY(y - r * ky / 100), calcX(x - r) + zoomed2R * kx / 100, calcY(y - r) + zoomed2R * ky / 100, offset, ang, false, p);
                 }
+            } else if (id == 6) { // sinus
+
+            } else if (id == 7) { // speed multiplier
+                int x = data[1];
+                int y = data[2];
+                int l = data[3];
+                int h = data[4];
+                int ang = data[5];
+                Paint p = new Paint();
+                p.setStyle(Paint.Style.FILL);
+                //p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(h);
+                p.setColor(Color.RED);
+                int dx = (int) (l * Math.cos(Math.toRadians(ang)));
+                int dy = (int) (l * Math.sin(Math.toRadians(ang)));
+                g.drawLine(calcX(x), calcY(y), calcX(x + dx), calcY(y + dy), p);
+                int vectorX = (int) (data[7] * Math.cos(Math.toRadians((ang + 15) + data[6])));
+                int vectorY = (int) (data[7] * Math.sin(Math.toRadians((ang + 15) + data[6])));
+                g.drawLine(calcX(x + dx/2), calcY(y + dy/2), calcX(x + dx/2 + vectorX), calcY(y + dy/2 + vectorY), p);
             }
         }
 
@@ -448,7 +467,7 @@ public class MainActivity extends AppCompatActivity {
         float lesserTextSize;
         String[] mainBtns = {"Name", "Load", "Save", "Line", "Circle", "More", "List"};
         String[] editorBtns = {/*"Undo/ Redo", */"Move point-1", "Move point-2", "Edit", "Delete"};
-        String[] expandedMenuBtns = {"Breakable line"/*, "Brekable circle"*/};
+        String[] expandedMenuBtns = {"Breakable line", "Breakable circle", "Sinus", "Speed multiplier"};
         boolean isMenuExpanded = false;
         boolean isListShown = false;
         int listWidthInBtns = 2;
@@ -577,7 +596,7 @@ public class MainActivity extends AppCompatActivity {
                         g.drawText(expandedMenuBtns[i], xUpperBtnsOffset + i * btnW + btnW / 2, h - btnH * 3 / 2 + bounds.height() / 2, paint);
                         //Log.i("<", "<");
                     } else {
-                        String[] text = expandedMenuBtns[expandedMenuBtns.length - 1 - i].split(" ");
+                        String[] text = expandedMenuBtns[i].split(" ");
                         //Log.i("l", String.valueOf(text.length));
                         for (int j = 0; j < text.length; j++) {
                             paint.getTextBounds(text[j], 0, text[j].length(), bounds);
@@ -984,6 +1003,40 @@ public class MainActivity extends AppCompatActivity {
                     currentPlacing[7] = 100;
                     currentPlacing[8] = 20;
                 }
+            } else
+            if (id == 6) {
+                cancel();
+            } else
+            if (id == 7) {
+                if (step == 1) {
+                    currentPlacing[1] = x;
+                    currentPlacing[2] = y;
+                }
+                if (step == 2) {
+                    x0 = currentPlacing[1];
+                    y0 = currentPlacing[2];
+                    short dx = (short) (x - x0);
+                    short dy = (short) (y - y0);
+                    short l = (short) calcDistance(dx, dy);
+                    short h = 1;
+                    short ang = (short) Math.toDegrees(Math.atan2(dy, dx));
+                    currentPlacing[3] = l;
+                    currentPlacing[4] = h;
+                    currentPlacing[5] = ang;
+                }
+                if (step == 3) {
+                    int x1 = currentPlacing[1];
+                    int y1 = currentPlacing[2];
+                    int x2 = currentPlacing[3];
+                    int y2 = currentPlacing[4];
+                    short centerX = (short) ((x2 - x1) / 2 + x1);
+                    short centerY = (short) ((y2 - y1) / 2 + y1);
+                    short dx = (short) (x - centerX);
+                    short dy = (short) (y - centerY);
+                    currentPlacing[6] = (short) 0;
+                    currentPlacing[7] = (short) calcDistance(dx, dy);
+                    currentPlacing[8] = (short) 30;
+                }
             }
 
             short currCheckingX = currentPlacing[1];
@@ -1012,9 +1065,19 @@ public class MainActivity extends AppCompatActivity {
                 short currCheckingX = mgStruct.buffer[i][1];
                 short currCheckingY = mgStruct.buffer[i][2];
                 int id = mgStruct.buffer[i][0];
-                if (id == 2 | id == 4) {
+                if (id == 2 | id == 4 | id == 7) {
                     short x2nd = mgStruct.buffer[i][3];
                     short y2nd = mgStruct.buffer[i][4];
+
+                    if (id == 7) {
+                        short ang = mgStruct.buffer[i][5];
+                        short l = mgStruct.buffer[i][3];
+                        short dx = (short) (l * Math.cos(Math.toRadians(ang)));
+                        short dy = (short) (l * Math.sin(Math.toRadians(ang)));
+                        x2nd = (short) (currCheckingX + dx);
+                        y2nd = (short) (currCheckingY + dy);
+                    }
+
                     if (compareAsEnds(currCheckingX, currCheckingY, x2nd, y2nd)) {
                         currCheckingX = x2nd;
                         currCheckingY = y2nd;
