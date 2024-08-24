@@ -164,15 +164,14 @@ public class FileUtils {
     }
     
     public static void checkFolder(String path) throws IOException {
-        File f = new File(path);
-        if (!f.canWrite()) {
+        if (!(new File(path)).canWrite()) {
             openDirectory(Uri.parse(path));
         }
 
         path = path + "test.mgstruct";
 
         saveShortArrayToFile(TESTDATA, path);
-        f.delete();
+        new File(path).delete();
     }
 
     public static void openDirectory(Uri uriToLoad) {
